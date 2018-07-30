@@ -3,6 +3,7 @@
 
 ptraceの練習に．
 
-procout(https://github.com/itchyny/procout)  
-Copyright (c) 2017 itchyny <https://github.com/itchyny>  
-License under MIT (https://github.com/itchyny/procout/blob/master/LICENSE)  
+[procout](https://github.com/itchyny/procout)  
+>The MIT License (MIT)  
+>Copyright (c) 2017 itchyny <https://github.com/itchyny>  
+License under MIT (https://github.com/itchyny/procout/blob/master/LICENSE)
