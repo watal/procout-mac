@@ -1,23 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h> //sleep
 #include <sys/types.h> //caddr_t
 #include <sys/ptrace.h>
-#include <unistd.h> //sleep
 
-#ifndef LINUX
-
+#ifndef LINUX //Linux以外ではPTRACE_の代わりにPT_を使用
 #if !defined(PTRACE_ATTACH) && defined(PT_ATTACHEXC)
 #define PTRACE_ATTACH PT_ATTACHEXC
 #endif
-
 #if !defined(PTRACE_DETACH) && defined(PT_DETACH)
 #define PTRACE_DETACH PT_DETACH
 #endif
-
 #endif
 
 int main(int argc, char *argv[])
 {
+    // コマンドライン引数で対象PIDを取得
     if (argc < 2) {
         fprintf(stderr, "Usage:  %s [PID]", argv[0]);
         exit(1);
