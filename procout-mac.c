@@ -103,11 +103,12 @@ int main(int argc, char *argv[])
             is_enter_stop = prev_orig_rax == regs.orig_rax ? !is_enter_stop : 1;
             prev_orig_rax = regs.orig_rax;
             if (is_enter_stop && regs.orig_rax == SYS_write) {
+                // PTRACE_PEEKDATAによる読み取り
                 peek_and_output(pid, regs.rsi, regs.rdx, (int)regs.rdi);
             }
         }
-
-        ptrace(PTRACE_SYSCALL, pid, NULL, NULL);
+        // 再開し，次のシステムコールで再度停止する処理
+        ptrace(PTRACE_SYSCALL, pid, NULL, 0);
 #else
             // タスクのPID（対象）を指定
             if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
@@ -136,6 +137,8 @@ int main(int argc, char *argv[])
                 exit(EXIT_FAILURE);
             }
             printf("RSI = %llx\n", regs.uts.ts64.__rsi);
+
+            // PTRACE_PEEKDATAによる読み取り
             peek_and_output(pid, regs.uts.ts64.__rsi, regs.uts.ts64.__rdx, (int)regs.uts.ts64.__rdi);
 
              // タスクの再開
@@ -147,7 +150,8 @@ int main(int argc, char *argv[])
             mach_port_deallocate(mach_task_self(), task);
             exit(EXIT_SUCCESS);
         }
-        //syscallと同じこと
+        // 再開し，次のシステムコールで再度停止する処理
+        // ptrace(PTRACE_SYSCALL, pid, NULL, 0);相当のものを入れる
 #endif
     }
 
