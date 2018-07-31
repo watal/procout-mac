@@ -8,22 +8,29 @@
 #include <sys/user.h>
 #include <sys/wait.h>
 
-#if !defined(PTRACE_ATTACH) && (defined(PT_ATTACHE) || defined(PT_ATTACHEXC))
-#define PTRACE_ATTACH PT_ATTACHEXC
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <mach/mach_types.h>
 #endif
 
+// ATTACH
+#if !defined(PTRACE_ATTACH) && (defined(PT_ATTACHE) || defined(PT_ATTACHEXC))
+#ifdef __APPLE__
+#define PTRACE_ATTACH PT_ATTACHEXC
+#else
+#define PTRACE_ATTACH PT_ATTACHE
+#endif
+#endif
+
+// DETACH
 #if !defined(PTRACE_DETACH) && defined(PT_DETACH)
 #define PTRACE_DETACH PT_DETACH
 #endif
 
+// PEEKDATA
 #if !defined(PTRACE_PEEKDATA) && defined(PT_READ_D)
 #define PTRACE_PEEKDATA PT_READ_D
 #endif
-
-//#if !defined(PTRACE_SYSCALL) && defined(PT_CONTINUE)
-//#define PTRACE_SYSCALL PT_CONTINUE
-//#endif
-//
 
 #ifndef __linux__
 struct user_regs_struct
@@ -86,7 +93,11 @@ void peek_and_output(pid_t pid, long long addr, long long size, int fd)
 int main(int argc, char *argv[])
 {
     int status;
+#ifndef __APPLE__
     struct user_regs_struct regs;
+#else
+    x86_thread_state_t regs;
+#endif
 
     // コマンドライン引数で対象PIDを取得
     if (argc < 2) {
@@ -100,7 +111,7 @@ int main(int argc, char *argv[])
 
     // アタッチ
     if (ptrace(PTRACE_ATTACH, pid, NULL, 0) < 0) {
-        perror("failed to attach");
+        perror("ptrace() failed to attach");
         exit(1);
     }
 
@@ -114,6 +125,7 @@ int main(int argc, char *argv[])
         if (WIFEXITED(status)) {
             break;
         } else if (WIFSTOPPED(status) && WSTOPSIG(status) == (SIGTRAP | 0x80)) {
+#ifndef __APPLE__
             ptrace(PTRACE_GETREGS, pid, NULL, &regs);
             is_enter_stop = prev_orig_rax == regs.orig_rax ? !is_enter_stop : 1;
             prev_orig_rax = regs.orig_rax;
@@ -122,10 +134,56 @@ int main(int argc, char *argv[])
             }
         }
         ptrace(PTRACE_SYSCALL, pid, NULL, NULL);
+#else
+            // macOSの処理単位
+            mach_port_t task;
+
+            // タスクのPID（対象）を指定
+            if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
+                perror("task_for_pid() failed\n");
+                exit(EXIT_FAILURE);
+            }
+
+            // タスクの中断（レジスタ値取得のため）
+            if (task_suspend(task) != KERN_SUCCESS) {
+                perror("task_suspend() failed\n");
+                exit(EXIT_FAILURE);
+            }
+
+            // スレッドの確認
+            thread_act_array_t threads = NULL;
+            mach_msg_type_number_t threadCount;
+            if (task_threads(task, &threads, &threadCount) != KERN_SUCCESS) {
+                perror("task_threads() failed\n");
+                exit(EXIT_FAILURE);
+            }
+
+            // レジスタ値取得
+            x86_thread_state_t state;
+            mach_msg_type_number_t count = x86_THREAD_STATE_COUNT;
+            if (thread_get_state(threads[0], x86_THREAD_STATE, (thread_state_t)&state, &count) != KERN_SUCCESS) {
+                perror("thread_get_state() failed\n");
+                exit(EXIT_FAILURE);
+            }
+
+            peek_and_output(pid, state.uts.ts64.__rsi, state.uts.ts64.__rdx, (int)state.uts.ts64.__rdi);
+
+             //　タスクの再開
+            if (task_resume(task) != KERN_SUCCESS) {
+                perror("task_resume() failed\n");
+                exit(EXIT_FAILURE);
+            }
+
+            mach_port_deallocate(mach_task_self(), task);
+            exit(EXIT_SUCCESS);
+        }
+        //syscallと同じこと
+#endif
     }
+
 //     // デタッチ
 //     if (ptrace(PTRACE_DETACH, pid, 0, 0)< 0) {
-//         perror("failed to detach");
+//         perror("ptrace() failed to detach");
 //         exit(1);
 //     }
 //     printf("attached from %d\n",pid);
