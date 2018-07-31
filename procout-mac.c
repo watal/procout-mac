@@ -92,17 +92,18 @@ int main(int argc, char *argv[])
 
 #ifndef __APPLE__
     ptrace(PTRACE_SETOPTIONS, pid, NULL, PTRACE_O_TRACESYSGOOD);
+
     int is_enter_stop = 0;
     long prev_orig_rax = -1;
 #endif
-
     while (1) {
 P
         waitpid(pid, &status, 0);
-P //二度目のwaitpidを超えない
+P // 二度目のwaitpidを超えない
         if (WIFEXITED(status)) {
             break;
         } else if (WIFSTOPPED(status) && WSTOPSIG(status) == (SIGTRAP | 0x80)) {
+P // 表示されない
 #ifndef __APPLE__
             ptrace(PTRACE_GETREGS, pid, NULL, &regs);
             is_enter_stop = prev_orig_rax == regs.orig_rax ? !is_enter_stop : 1;
@@ -152,9 +153,8 @@ P //二度目のwaitpidを超えない
                 perror("task_resume() failed\n");
                 exit(EXIT_FAILURE);
             }
-
-            mach_port_deallocate(mach_task_self(), task);
         }
+P
         // 再開し，次のシステムコールで再度停止する処理
         // PT_STEPにより1命令ごとに停止
         ptrace(PT_CONTINUE, pid, NULL, 0);
