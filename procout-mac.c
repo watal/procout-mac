@@ -66,6 +66,7 @@ int main(int argc, char *argv[])
     struct user_regs_struct regs;
 #else
     x86_thread_state_t regs;
+    mach_port_t task; // macOSの処理単位
 #endif
 
     // コマンドライン引数で対象PIDを取得
@@ -83,9 +84,7 @@ int main(int argc, char *argv[])
         perror("ptrace() failed to attach");
         exit(1);
     }
-    printf("attach \n");
-
-//     sleep(5);
+    printf("attached to %d\n", pid);
 
 #ifndef __APPLE__
     ptrace(PTRACE_SETOPTIONS, pid, NULL, PTRACE_O_TRACESYSGOOD);
@@ -110,9 +109,6 @@ int main(int argc, char *argv[])
 
         ptrace(PTRACE_SYSCALL, pid, NULL, NULL);
 #else
-            // macOSの処理単位
-            mach_port_t task;
-
             // タスクのPID（対象）を指定
             if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
                 perror("task_for_pid() failed\n");
@@ -139,10 +135,10 @@ int main(int argc, char *argv[])
                 perror("thread_get_state() failed\n");
                 exit(EXIT_FAILURE);
             }
-            printf("%llx \n", regs.uts.ts64.__rsi);
+            printf("RSI = %llx\n", regs.uts.ts64.__rsi);
             peek_and_output(pid, regs.uts.ts64.__rsi, regs.uts.ts64.__rdx, (int)regs.uts.ts64.__rdi);
 
-             //　タスクの再開
+             // タスクの再開
             if (task_resume(task) != KERN_SUCCESS) {
                 perror("task_resume() failed\n");
                 exit(EXIT_FAILURE);
@@ -160,7 +156,7 @@ int main(int argc, char *argv[])
         perror("ptrace() failed to detach");
         exit(1);
     }
-    printf("attached from %d\n",pid);
+    printf("detached from %d\n",pid);
 
     return 0;
 }
