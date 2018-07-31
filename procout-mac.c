@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h> //sleep
+#include <signal.h>
 #include <sys/types.h> //caddr_t
 #include <sys/ptrace.h>
 #include <sys/syscall.h>
@@ -93,6 +94,7 @@ int main(int argc, char *argv[])
 #endif
 
     while (1) {
+
         waitpid(pid, &status, 0);
 
         if (WIFEXITED(status)) {
@@ -103,7 +105,7 @@ int main(int argc, char *argv[])
             is_enter_stop = prev_orig_rax == regs.orig_rax ? !is_enter_stop : 1;
             prev_orig_rax = regs.orig_rax;
             if (is_enter_stop && regs.orig_rax == SYS_write) {
-                // PTRACE_PEEKDATAによる読み取り
+                // writeシステムコールの場合，PTRACE_PEEKDATAによる読み取り
                 peek_and_output(pid, regs.rsi, regs.rdx, (int)regs.rdi);
             }
         }
@@ -136,10 +138,11 @@ int main(int argc, char *argv[])
                 perror("thread_get_state() failed\n");
                 exit(EXIT_FAILURE);
             }
-            printf("RSI = %llx\n", regs.uts.ts64.__rsi);
 
-            // PTRACE_PEEKDATAによる読み取り
-            peek_and_output(pid, regs.uts.ts64.__rsi, regs.uts.ts64.__rdx, (int)regs.uts.ts64.__rdi);
+            // writeシステムコールの場合，PTRACE_PEEKDATAによる読み取り
+            if (regs.uts.ts64.__rax == SYS_write) {
+                peek_and_output(pid, regs.uts.ts64.__rsi, regs.uts.ts64.__rdx, (int)regs.uts.ts64.__rdi);
+            }
 
              // タスクの再開
             if (task_resume(task) != KERN_SUCCESS) {
@@ -148,10 +151,16 @@ int main(int argc, char *argv[])
             }
 
             mach_port_deallocate(mach_task_self(), task);
-            exit(EXIT_SUCCESS);
         }
         // 再開し，次のシステムコールで再度停止する処理
-        // ptrace(PTRACE_SYSCALL, pid, NULL, 0);相当のものを入れる
+        // PT_STEPにより1命令ごとに停止
+        ptrace(PT_CONTINUE, pid, NULL, 0);
+
+        // システムコール発行を検知する処理
+        {
+        kill(pid, SIGTRAP);
+        // システムコール発行時のみ対象プロセスにSIGTRAPを実行．
+        }
 #endif
     }
 
