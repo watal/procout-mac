@@ -33,6 +33,9 @@
 #define PTRACE_PEEKDATA PT_READ_D
 #endif
 
+//デバッグ用
+#define P printf("%s, %d\n", __FILE__, __LINE__); fflush (stdout);
+
 void peek_and_output(pid_t pid, long long addr, long long size, int fd)
 {
     // 標準出力か標準エラー出力
@@ -94,9 +97,9 @@ int main(int argc, char *argv[])
 #endif
 
     while (1) {
-
+P
         waitpid(pid, &status, 0);
-
+P //二度目のwaitpidを超えない
         if (WIFEXITED(status)) {
             break;
         } else if (WIFSTOPPED(status) && WSTOPSIG(status) == (SIGTRAP | 0x80)) {
