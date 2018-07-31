@@ -14,12 +14,12 @@
 #endif
 
 // ATTACH
-#if !defined(PTRACE_ATTACH) && (defined(PT_ATTACHE) || defined(PT_ATTACHEXC))
-#ifdef __APPLE__
-#define PTRACE_ATTACH PT_ATTACHEXC
-#else
-#define PTRACE_ATTACH PT_ATTACHE
-#endif
+#if !defined(PTRACE_ATTACH) && (defined(PT_ATTACH))
+// #ifdef __APPLE__
+// #define PTRACE_ATTACH PT_ATTACHEXC
+// #else
+#define PTRACE_ATTACH PT_ATTACH
+// #endif
 #endif
 
 // DETACH
@@ -43,7 +43,7 @@ void peek_and_output(pid_t pid, long long addr, long long size, int fd)
     long data;
 
     for (i = 0 ; i < size ; i+= sizeof(long)){
-        data = ptrace(PTRACE_PEEKDATA, pid, addr + i, 0);
+        data = ptrace(PTRACE_PEEKDATA, pid, (caddr_t)addr + i, 0);
         if (data == -1) {
                 printf("failed to peek data\n");
                 free(bytes);
@@ -59,7 +59,9 @@ void peek_and_output(pid_t pid, long long addr, long long size, int fd)
 
 int main(int argc, char *argv[])
 {
+    pid_t pid;
     int status;
+
 #ifndef __APPLE__
     struct user_regs_struct regs;
 #else
@@ -73,7 +75,7 @@ int main(int argc, char *argv[])
     }
 
     // 対象PIDを指定
-    pid_t pid = atoi(argv[1]);
+    pid = atoi(argv[1]);
     printf("attach to %d\n", pid);
 
     // アタッチ
@@ -81,11 +83,16 @@ int main(int argc, char *argv[])
         perror("ptrace() failed to attach");
         exit(1);
     }
+    printf("attach \n");
 
+//     sleep(5);
+
+#ifndef __APPLE__
     ptrace(PTRACE_SETOPTIONS, pid, NULL, PTRACE_O_TRACESYSGOOD);
-
     int is_enter_stop = 0;
     long prev_orig_rax = -1;
+#endif
+
     while (1) {
         waitpid(pid, &status, 0);
 
@@ -100,6 +107,7 @@ int main(int argc, char *argv[])
                 peek_and_output(pid, regs.rsi, regs.rdx, (int)regs.rdi);
             }
         }
+
         ptrace(PTRACE_SYSCALL, pid, NULL, NULL);
 #else
             // macOSの処理単位
@@ -126,14 +134,13 @@ int main(int argc, char *argv[])
             }
 
             // レジスタ値取得
-            x86_thread_state_t state;
             mach_msg_type_number_t count = x86_THREAD_STATE_COUNT;
-            if (thread_get_state(threads[0], x86_THREAD_STATE, (thread_state_t)&state, &count) != KERN_SUCCESS) {
+            if (thread_get_state(threads[0], x86_THREAD_STATE, (thread_state_t)&regs, &count) != KERN_SUCCESS) {
                 perror("thread_get_state() failed\n");
                 exit(EXIT_FAILURE);
             }
-
-            peek_and_output(pid, state.uts.ts64.__rsi, state.uts.ts64.__rdx, (int)state.uts.ts64.__rdi);
+            printf("%llx \n", regs.uts.ts64.__rsi);
+            peek_and_output(pid, regs.uts.ts64.__rsi, regs.uts.ts64.__rdx, (int)regs.uts.ts64.__rdi);
 
              //　タスクの再開
             if (task_resume(task) != KERN_SUCCESS) {
@@ -148,12 +155,12 @@ int main(int argc, char *argv[])
 #endif
     }
 
-//     // デタッチ
-//     if (ptrace(PTRACE_DETACH, pid, 0, 0)< 0) {
-//         perror("ptrace() failed to detach");
-//         exit(1);
-//     }
-//     printf("attached from %d\n",pid);
+    // デタッチ
+    if (ptrace(PTRACE_DETACH, pid, 0, 0)< 0) {
+        perror("ptrace() failed to detach");
+        exit(1);
+    }
+    printf("attached from %d\n",pid);
 
     return 0;
 }
